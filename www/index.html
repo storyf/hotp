@@ -1,0 +1,478 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta http-equiv="Content-Security-Policy" content="default-src * data: gap: content: https://ssl.gstatic.com; style-src * 'unsafe-inline'; script-src * 'unsafe-inline' 'unsafe-eval'">
+  <script src="components/loader.js"></script>
+  <script src="lib/onsenui/js/onsenui.min.js"></script>
+
+  <link rel="stylesheet" href="components/loader.css">
+  <link rel="stylesheet" href="lib/onsenui/css/onsenui.css">
+  <link rel="stylesheet" href="lib/onsenui/css/onsen-css-components.css">
+  <link rel="stylesheet" href="css/style.css">
+
+   <script type="text/javascript"
+      src="http://maps.googleapis.com/maps/api/js?key=AIzaSyBIjpOCQdWKWWMzDboyRortubjTY2aFe8c">
+    </script>
+
+  <script>
+        window.fn = {};
+
+        //ボタン押下でメニューを開く
+        window.fn.open = function(){
+            var menu = document.getElementById("menu");
+            menu.open();
+        };
+  
+        window.fn.load = function(page){
+              var content = document.getElementById("content");
+              var menu = document.getElementById("menu");
+              content.load(page).then(menu.close.bind(menu));
+        };
+ 
+ 
+        var ind = 0;
+        var map;
+        var myLatlng;
+        var marker = new Array();
+  
+		// ホットペッパーAPIのキー
+		var api_key = "a01eabbf5c07f339";   //←ここは自分で取得したキーに変える
+		
+		// 検索結果のレストラン一覧を入れます
+		var shops = [];
+        
+        // お気に入りのレストラン一覧を入れます
+        var favorite_shops;
+		
+		// 画面が切り替わる度に呼ばれます
+		document.addEventListener('init', function(event) {
+		  var page = event.target.id;
+		  
+		  // 最初の画面を表示した時の処理
+		  if (page == "list-page") {
+				// レストラン取得ボタンを押した時の処理
+                $("#getShops").on("click",function(){
+                    
+					// 現在位置を取得します(GPSのセンサーを使う)
+                    navigator.geolocation.getCurrentPosition(
+                        function(location){
+        					// 検索実行するURL
+    						var url = `http://webservice.recruit.co.jp/hotpepper/gourmet/v1/?key=${api_key}&lat=${location.coords.latitude}&lng=${location.coords.longitude}&range=5&order=4&format=json`;
+
+
+                            $.ajax({
+                                type: 'GET',
+                                dataType: "json",
+                                url: url
+                                
+                            }).done(function(data){ //ajaxの通信に成功した場合
+                                // 処理が成功した場合
+                                shops = data.results.shop;
+                                for (var i = 0; i < shops.length; i++) {
+                                	var shop = shops[i];
+                                	// リストに追加
+                                	$("#shops").append(`<ons-list-item modifier="chevron" class="shop" index=i lat="${shop.lat}" lon="${shop.lng}" tappable><span data-shop-id="${i}"><img src="${shop.logo_image}"></span> <span class="center">${shop.name}</span></ons-list-item>`);
+                                }
+                
+                            }).fail(function(data){ //ajaxの通信に失敗した場合
+                                // 処理が失敗した場合
+                                alert("ajaxエラー！");
+                            });
+                            
+                        },
+                        function(error){
+                            // 処理が失敗した場合
+                            alert("処理エラー！");
+                        }
+                    );
+                    
+				});
+				
+				// レストラン名をタップした時のイベント
+                $(document).on("tap",".shop",function(){
+                    
+					// レストランデータを特定
+    				var index = $(this).find("span").data("shop-id");
+					var shop = shops[index];
+					
+					// ページ移動
+                    // alert(index);
+					var nav = document.querySelector('#navigator');
+					nav.pushPage('detail.html', {data: {shop: shop, mode: true}});
+				}); 
+		  }
+          
+		  // 詳細画面を表示した時の処理
+		  if (page == "detail-page") {
+				// レストランデータを表示
+				var shop = event.target.data.shop;
+                var urls = event.target.data.urls;
+                console.log(shop);
+				$("#shop-name").text(shop.name);
+				$("#shop-address").text(shop.address);
+                $("#shop-url").attr("href",shop.urls.pc);
+                $("#shop-url").text("お店のページを開く");
+                
+                var pin_lat = shop.lat;
+                var pin_lon = shop.lng;
+                var pin_name = shop.name;
+                
+                
+                //googlemapを表示する
+                showMap(pin_lat,
+                        pin_lon,
+                        pin_name);
+                        
+                //ピンを立てる
+                syuhenPin(pin_lat,pin_lon,pin_name);
+                ind++;
+                
+                //「お気に入りに追加ボタン」の表示制御
+                var mode = event.target.data.mode;
+
+                if(mode == true){
+                    $("#addfavorite").show();
+                }else{
+                    $("#addfavorite").hide();
+                }
+
+                //イベントの追加
+                //お気に入り登録
+                $("#addfavorite").on("click",function(){
+                    set_localStorage("favoriteList", shop);
+                    // alert("お気に入りに登録されました");
+                    console.log("お気に入りに登録されました");
+                })
+                
+                
+            //     //お気に入りボタン押下時の処理
+            //     $("#buttonFavorite").on("click",function(){
+            //     var json_array = [];
+            //     var favoriteList = {
+            //         shop  :shop,
+            //     };
+            //     alert(shop.name);
+            //     json_array.push(favoriteList);
+            //     //文字化けするのでstringfyを通す
+            //     localStorage.setItem("favoriteList",JSON.stringify(json_array));
+            //     alert("お気に入りに登録されました");
+            //      })
+                
+		    }
+                
+          //設定画面を開いたとき
+          if(page == "setting-page"){
+            var KEY = "setting_1";
+            var item = localStorage.getItem(KEY);
+            
+            //イベントの設定
+            //登録ボタン押下時の処理
+            $("#regist").on("click",function(){
+              var setting_1 = $("input[name=r]:checked").val();
+              localStorage.setItem("setting_1",setting_1);
+            })  
+          }
+          
+          //お気に入り画面を開いたとき
+          if(page == "favorite-page"){
+            
+                //ローカルストレージから取得する
+                var str = localStorage.getItem("favoriteList");
+                var favorite_shops = JSON.parse(str);
+                // alert("json_arrayは"+json_array.name);
+                // console.log(json_array[0].shop.id);
+                // alert("strは"+str);
+                for (var i = 0; i < favorite_shops.length; i++) {
+                $("#favorite-shop").append(`<ons-list-item modifier="chevron" class="favorite-shop" tappable><span data-shop-id="${i}"><img src="${favorite_shops[0].shop.logo_image}"></span> <span class="center">${favorite_shops[0].shop.name}</span></ons-list-item>`);
+                // $("#favorite-shop").text(json_array[0].shop.id);
+                }
+                
+                // $("#favorite-shop").append(`<ons-list-item modifier="chevron" class="favorite-shop" tappable><span data-shop-id="${i}"><img src="${json_array[0].shop.logo_image}"></span> <span class="center">${json_array[0].shop.name}</span></ons-list-item>`);
+
+
+            //お気に入り一覧の削除ボタン押下時の処理
+            $("#favorite_clear").on('click',function(){
+                localStorage.removeItem('favoriteList');
+                
+            })
+                
+                $(document).on("tap",".favorite-shop",function(){
+                    
+    				// レストランデータを特定
+    				var index = $(this).find("span").data("shop-id");
+					var shop = shops[index];
+					
+					// ページ移動
+					var nav = document.querySelector('#navigator');
+					nav.pushPage('favorite-detail.html', {data: {shop: shop, mode:false}});
+				}); 
+            
+            
+          }
+          
+		});
+    
+        function showMap(lat,lon){
+        var latlng = new google.maps.LatLng(lat,lon);  //表示する地図の座標を指定する
+        var opts = {
+            zoom: 15, //倍率
+            center: latlng,    //地図の中心座標
+        };
+        //地図を表示する
+            map = new google.maps.Map($("#map_canvas").get(0), opts);
+        };
+        
+        function syuhenPin(lat,lon,place_name){
+        //alert("pin");
+        //マーカーの座標を決める
+            myLatlng = new google.maps.LatLng(lat,lon);
+            
+            //吹き出しを設定
+            var contentString = "<p>"+ place_name + "</p>";
+
+            //マーカーを表示
+            marker[ind] = new google.maps.Marker({
+                position: myLatlng,
+                map: map,
+                title:place_name,
+                info:new google.maps.InfoWindow({content : contentString})
+            });
+            
+            
+            var infowindow = new google.maps.InfoWindow({
+                content : contentString
+            });
+
+            //マーカと紐付ける
+            google.maps.event.addListener(marker[ind],"click",function(){
+                //infowindow.open(map,marker[ind]);
+                this.info.open(map,this);
+            });
+
+        };
+        
+        function set_localStorage(key,value){
+            // alert("set_localStorage");
+            // alert(key);
+            
+            //現在登録されているお気に入りリストに追加していく
+            // ローカルストレージからゲット
+            var json_obj=[];
+            var str = localStorage.getItem(key);
+            
+            //未登録の判定
+            if(str == null){
+                // alert("★");
+                //未登録の場合は、ダミーで空配列文字列'[]'をセットする
+                json_obj = JSON.parse("[]");
+                
+            }else{
+                // alert("★★");
+                json_obj = JSON.parse(str);
+            }
+            // alert("★★★");
+            //今回追加された情報を追加する
+            json_obj.push(value);
+
+            //ローカルストレージにセット
+            var str = JSON.stringify(json_obj);
+            localStorage.setItem(key, str);
+            
+        }
+
+  </script>
+</head>
+	<body>
+	  <ons-navigator id="navigator" page="list.html">
+        <ons-page>
+            <ons-splitter>
+                <ons-splitter-side id="menu" side="left" width="220px" collapse swipeable>
+                    <ons-page>
+                        <ons-list>
+                        
+                            <ons-list-item onClick="fn.load('list.html')" tappable>
+                                <div class="left">
+                                    <ons-icon icon="home"></ons-icon>
+                                </div>
+                                <div>Home</div>
+                            </ons-list-item>
+                            
+                            <ons-list-item onClick="fn.load('favorite.html')" tappable>
+                                <div class="left">
+                                    <ons-icon icon="ion-ios-star"></ons-icon>
+                                </div>
+                                <div>お気に入り</div>
+                            </ons-list-item>
+                            
+                            <ons-list-item onClick="fn.load('setting.html')" tappable>
+                                <div class="left">
+                                    <ons-icon icon="cog"></ons-icon>
+                                </div>
+                                <div>設定</div>
+                            </ons-list-item>
+                            
+                        </ons-list>
+                    </ons-page>
+                </ons-splitter-side>
+                <ons-splitter-content id="content" page="list.html"></ons-splitter-content>
+            </ons-splitter>
+        </ons-page>
+       
+	  </ons-navigator>
+	
+        //検索結果一覧ページ
+		<ons-template id="list.html">
+		  <ons-page id="list-page">
+				<ons-toolbar>
+                    <div class="left">
+                        <ons-toolber-button onClick="fn.open()">
+                            <ons-icon icon="ion-navicon"></ons-icon>
+                        </ons-toolber-button>
+                    </div>
+					<div class="center">レストラン検索</div>
+				</ons-toolbar>
+		
+				<div class="content" style="text-align: center">
+					<ons-list>
+						<ons-list-header>
+						  <a href="http://webservice.recruit.co.jp/"><img src="http://webservice.recruit.co.jp/banner/hotpepper-s.gif" alt="ホットペッパー Webサービス" width="135" height="17" border="0" title="ホットペッパー Webサービス"></a>
+						</ons-list-header>
+						<ons-list-item>
+						  <div class="center">
+								<ons-button id="getShops">レストラン取得</ons-button>
+						  </div>
+						</ons-list-item>
+						<div id="shops">
+						</div>
+					</ons-list>
+				</div>
+		  </ons-page>
+		</ons-template>
+	
+		<ons-template id="detail.html">
+		  <ons-page id="detail-page">
+				<ons-toolbar>
+					<div class="left"><ons-back-button>戻る</ons-back-button></div>
+					<div class="center shop-name">レストラン詳細</div>
+				</ons-toolbar>
+		
+				<div class="content" id="shop-info" style="text-align: center">
+					<ons-list class="shop-info-list">
+						<ons-list-header>名前</ons-list-header>
+						<ons-list-item><span id="shop-name"></span></ons-list-item>
+						<ons-list-header>住所</ons-list-header>
+						<ons-list-item id="shop-address"></ons-list-item>
+                        <ons-list-header>URL</ons-list-header>
+    					<ons-list-item id="shop-urls"><a href="" id="shop-url"></a></ons-list-item>
+                        <ons-list-item id="shop-favorite">お気に入り登録　
+                            <ons-button id="addfavorite">
+                                <ons-icon icon="ion-ios-star"></ons-icon>
+                            </ons-button>
+                        </ons-list-item>
+        				<ons-list-item id="shop-map"><div id="map_canvas" style="width:330px; height:400px"></div></ons-list-item>
+					</ons-list>
+				</div>
+		  </ons-page>
+		</ons-template>
+        <!--設定メニュー-->
+        <ons-template id="setting.html">
+        <ons-page id="setting-page">
+            <ons-toolbar>
+            <div class="left">
+                <ons-toolbar-button onClick="fn.open()">
+                    <ons-icon icon="ion-navicon"></ons-icon>
+                </ons-toolbar-button>
+            </div>
+            </ons-toolbar>
+            
+            <ons-list>
+                <ons-list-header>検索範囲</ons-list-header>
+                
+                <ons-list-item>
+                <label class="radio-button radio-button--material">
+                    <input type="radio" class="radio-button__input radio-button--material__input" name="r" value="1">
+                    <div class="radio-button__checkmark radio-button--material__checkmark"></div>
+                    500m
+                </label>
+                <label class="radio-button radio-button--material">
+                    <input type="radio" class="radio-button__input radio-button--material__input" name="r" value="2">
+                    <div class="radio-button__checkmark radio-button--material__checkmark"></div>
+                    1000m
+                </label>
+                </ons-list-item>
+                
+                <ons-list-item>    
+                設定2
+                </ons-list-item>
+                
+                <ons-list-item>
+                設定3
+                </ons-list-item>
+            </ons-list>
+        </ons-template>
+        
+        <ons-template id="favorite.html">
+    	  <ons-page id="favorite-page">
+				<ons-toolbar>
+					<div class="left">
+                    <ons-toolbar-button onClick="fn.open()">
+                        <ons-icon icon="ion-navicon"></ons-icon>
+                    </ons-toolbar-button>
+                    </div>
+					<div class="center shop-name">お気に入りリスト</div>
+				</ons-toolbar>
+		
+				<div class="content" style="text-align: center">
+					<ons-list class="shop-info-list">
+						<div><span id="favorite-shop"></span></div>
+					</ons-list>
+				</div>
+                <ons-button id="favorite_clear">お気に入り一覧のクリア</ons-button>
+		  </ons-page>
+		</ons-template>
+        
+        <ons-template id="favorite-detail.html">
+    	  <ons-page id="favorite-detail-page">
+				<ons-toolbar>
+					<div class="left"><ons-back-button>戻る</ons-back-button></div>
+					<div class="center shop-name">レストラン詳細</div>
+				</ons-toolbar>
+		
+				<div class="content" id="favorite-shop-info" style="text-align: center">
+					<ons-list class="shop-info-list">
+						<ons-list-header>名前</ons-list-header>
+						<ons-list-item><span id="shop-name"></span></ons-list-item>
+						<ons-list-header>住所</ons-list-header>
+						<ons-list-item id="shop-address"></ons-list-item>
+                        <ons-list-header>URL</ons-list-header>
+    					<ons-list-item id="shop-urls"><a href="" id="shop-url"></a></ons-list-item>
+        				<ons-list-item id="shop-map"><div id="map_canvas" style="width:330px; height:400px"></div></ons-list-item>
+					</ons-list>
+				</div>
+		  </ons-page>
+		</ons-template>
+        
+	</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
